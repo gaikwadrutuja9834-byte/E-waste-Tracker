@@ -1,0 +1,173 @@
+import axios from 'axios';
+
+// Base API URL points to FastAPI backend
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Automatically inject JWT Bearer token into requests
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('ecotrace_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Intercept 401s
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      // Don't auto-redirect if checking me or on public verify page
+      const isPublic = window.location.pathname.startsWith('/verify/');
+      if (!isPublic && window.location.pathname !== '/login') {
+        // localStorage.removeItem('ecotrace_token');
+        // localStorage.removeItem('ecotrace_user');
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+export const api = {
+  // Authentication
+  auth: {
+    login: async (email, password) => {
+      const res = await apiClient.post('/auth/login', { email, password });
+      return res.data;
+    },
+    register: async (name, email, password, role = 'USER') => {
+      const res = await apiClient.post('/auth/register', { name, email, password, role });
+      return res.data;
+    },
+    getMe: async () => {
+      const res = await apiClient.get('/auth/me');
+      return res.data;
+    },
+    demoLogin: async (role = 'student') => {
+      const res = await apiClient.post(`/auth/demo-login/${role}`);
+      return res.data;
+    },
+  },
+
+  // AI Waste Scanner
+  scanner: {
+    predict: async (formData) => {
+      const res = await apiClient.post('/scanner/predict', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return res.data;
+    },
+    confirmDisposal: async (object_name, category, weight_kg = 0.3) => {
+      const data = new FormData();
+      data.append('object_name', object_name);
+      data.append('category', category);
+      data.append('weight_kg', weight_kg);
+      const res = await apiClient.post('/scanner/confirm-disposal', data);
+      return res.data;
+    },
+  },
+
+  // Digital Waste Passports
+  passports: {
+    create: async (payload) => {
+      const res = await apiClient.post('/passports', payload);
+      return res.data;
+    },
+    getAll: async () => {
+      const res = await apiClient.get('/passports');
+      return res.data;
+    },
+    getById: async (passportId) => {
+      const res = await apiClient.get(`/passports/${passportId}`);
+      return res.data;
+    },
+    verify: async (passportId) => {
+      const res = await apiClient.get(`/passports/${passportId}/verify`);
+      return res.data;
+    },
+    publicVerify: async (passportId) => {
+      const res = await apiClient.get(`/verify/${passportId}`);
+      return res.data;
+    },
+  },
+
+  // Lifecycle Events & Hash Chaining
+  lifecycle: {
+    addEvent: async (passportId, eventData) => {
+      const res = await apiClient.post(`/passports/${passportId}/events`, eventData);
+      return res.data;
+    },
+    getEvents: async (passportId) => {
+      const res = await apiClient.get(`/passports/${passportId}/events`);
+      return res.data;
+    },
+  },
+
+  // Smart Bins
+  bins: {
+    getAll: async () => {
+      const res = await apiClient.get('/bins');
+      return res.data;
+    },
+    getPredictions: async () => {
+      const res = await apiClient.get('/bins/predictions');
+      return res.data;
+    },
+    getById: async (binId) => {
+      const res = await apiClient.get(`/bins/${binId}`);
+      return res.data;
+    },
+    updateCapacity: async (binId, capacityPercent) => {
+      const res = await apiClient.post(`/bins/${binId}/capacity`, { capacity_percent: capacityPercent });
+      return res.data;
+    },
+    emptyBin: async (binId) => {
+      const res = await apiClient.post(`/bins/${binId}/empty`);
+      return res.data;
+    },
+  },
+
+  // Points & Community Leaderboard
+  points: {
+    getMyImpact: async () => {
+      const res = await apiClient.get('/points/me');
+      return res.data;
+    },
+    getHistory: async () => {
+      const res = await apiClient.get('/points/history');
+      return res.data;
+    },
+    getLeaderboard: async () => {
+      const res = await apiClient.get('/points/leaderboard');
+      return res.data;
+    },
+  },
+
+  // Admin Command Center
+  admin: {
+    getStats: async () => {
+      const res = await apiClient.get('/admin/stats');
+      return res.data;
+    },
+    getAllWaste: async () => {
+      const res = await apiClient.get('/admin/waste');
+      return res.data;
+    },
+    advancePassportStage: async (passportId) => {
+      const res = await apiClient.post(`/admin/passports/${passportId}/advance`);
+      return res.data;
+    },
+  },
+};
+
+export default api;
